@@ -6,7 +6,8 @@ from PIL import Image
 from moviepy.editor import ImageSequenceClip, AudioFileClip
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-import uuid
+import time
+import uuid 
 import aiohttp
 
 # Set your bot's command prefix and the intents
@@ -18,7 +19,7 @@ intents.guilds = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Create a ThreadPoolExecutor for processing attachments
-executor = ThreadPoolExecutor(max_workers=5)  # Adjust max_workers as needed
+executor = ThreadPoolExecutor(max_workers=10)  # Adjust max_workers as needed
 
 # Event to indicate the bot is ready
 @bot.event
@@ -36,31 +37,32 @@ async def on_message(message):
     # Check if the bot is mentioned in the message
     if bot.user.mentioned_in(message):
         print("I was mentioned?")
-
+        
         # Check if there are any attachments
         if message.attachments:
             print("Attachment detected!")
             await message.channel.send("On it!")
-
+            
             # Start processing attachments in a separate thread
             loop = asyncio.get_event_loop()
             for attachment in message.attachments:
                 # Generate a unique thread ID for file naming
                 unique_id = str(uuid.uuid4())  # Generate a unique ID
                 loop.run_in_executor(executor, lambda a=attachment, uid=unique_id: process_attachment(message, a, uid))
-
+            #return  # Exit early to avoid processing further
+        
         # Remove the mention from the message content
-        command = message.content.replace(f'<@{bot.user.id}>', '').replace('\n', ' ').replace('  ', ' ').strip()
+        command = message.content.replace(f'<@{bot.user.id}>', '').replace('\n', ' ').replace('  ', ' ')
 
         # Check if a command was provided
         if command:
             print("Running command")
+            loop = asyncio.get_event_loop()
+            print (command)
             for cmd in command.split(" "):
-                # Call the coroutine directly
-                await process_command(cmd, message)
-
-            # It's good to call process_commands to handle any command defined in your bot
-            await bot.process_commands(message)
+                print("External: " + cmd)
+                loop.run_in_executor(executor, lambda c=cmd, m=message: ProcessCommand(c, m))
+            await bot.process_commands(message)  # Allows command processing
         else:
             print("Nevermind, wasn't wanted")
             responses = [
@@ -71,28 +73,26 @@ async def on_message(message):
             ]
             await message.channel.send(random.choice(responses))
 
-
-async def process_command(command, message):
+async def ProcessCommand(command, message):
+    # Check if command is an HTTP URL
+    print("Internal: " + command)
+    
     if command.startswith("http"):
         print("Processing HTTP image file")
         async with aiohttp.ClientSession() as session:
             async with session.get(command) as response:
                 if response.status == 200:
-                    # Get the content of the response as bytes
                     image_data = await response.read()
-                    
-                    # Save the image to a temporary file
                     unique_id = str(uuid.uuid4())
-                    file_path = f"./temp/{unique_id}.png"  # Save as PNG or choose based on URL
-
-                    # Use run_in_executor for blocking file I/O
-                    loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(executor, save_image_to_file, file_path, image_data)
+                    file_path = f"./temp/{unique_id}.png"  # Save as PNG
+                    
+                    with open(file_path, 'wb') as f:
+                        f.write(image_data)
 
                     print("Downloaded image from URL")
 
                     # Create video from the downloaded image
-                    video_path = await loop.run_in_executor(executor, create_video, file_path, unique_id)
+                    video_path = create_video(file_path, unique_id)
                     print("Made video from URL")
 
                     # Send the video back to the channel
@@ -104,9 +104,6 @@ async def process_command(command, message):
                 else:
                     await message.channel.send("Failed to download the image. Please check the URL.")
 
-def save_image_to_file(file_path, image_data):
-    with open(file_path, 'wb') as f:
-        f.write(image_data)
 
 # Function to process the attachment
 def process_attachment(message, attachment, unique_id):
@@ -122,6 +119,7 @@ def process_attachment(message, attachment, unique_id):
     file_path = f"./temp/{unique_id}_{attachment.filename}"
     asyncio.run_coroutine_threadsafe(attachment.save(file_path), bot.loop)
     print("We have the image")
+    time.sleep(3)  # Simulate processing time
     
     # Create video from image
     video_path = create_video(file_path, unique_id)
@@ -132,6 +130,10 @@ def process_attachment(message, attachment, unique_id):
         message.channel.send(file=discord.File(video_path)),
         bot.loop
     )
+
+    # Clean up temporary files
+    #os.remove(file_path)
+    #os.remove(video_path)
 
 def create_video(image_path, unique_id):
     # Set the duration for the video
