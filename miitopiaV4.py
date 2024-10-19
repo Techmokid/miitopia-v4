@@ -1,8 +1,13 @@
-import discord, os, random, uuid, asyncio
+import discord, os, random, uuid, asyncio,user_memory
 from discord.ext import commands
 from PIL import Image
 from moviepy.editor import ImageSequenceClip, AudioFileClip
 from concurrent.futures import ThreadPoolExecutor
+
+
+
+
+
 
 # Set bot's command prefix and the intents
 intents = discord.Intents.default()
@@ -38,7 +43,6 @@ async def on_message(message):
     if not bot.user.mentioned_in(message):
         return
 
-    print("I was mentioned!")
     command = message.content.replace(f'<@{bot.user.id}>', '').strip()
     commands = command.split(" ")
 
@@ -61,28 +65,37 @@ async def on_message(message):
         return
     if "threadcheck" in commands:
         await message.channel.send(f"Current number of active running tasks: {task_counter}")
-        return
+    if commands[0] == "datacheck":
+        if len(commands) == 1:
+            await message.channel.send(f"Username was not specified")
+        else:
+            await message.channel.send(f"Current data on user {commands[1]}: " + str(user_memory.getUserData(commands[1])))
+            
     
     # Process attachments
     if not message.attachments:
         return
-    
-    for attachment in message.attachments:
-        await download_and_create_video(message, attachment)
+
+    user_memory.clearUserData(message.author.name)
+    tasks = [download_and_create_video(message, attachment) for attachment in message.attachments]
+    await asyncio.gather(*tasks)
 
 # Coroutine for processing image attachment
 async def download_and_create_video(message, attachment):
+    global task_counter
     if not attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
         await message.channel.send("Invalid image file! Please upload a PNG, JPG, JPEG, or GIF.")
         return
 
     async with processLock:
-        global task_counter
         task_counter += 1
 
     # Download and process the image asynchronously
     unique_id = str(uuid.uuid4())
     file_path = f"{temp_folder}/{unique_id}_{attachment.filename}"
+
+    async with processLock:
+        user_memory.addUserData(message.author.name,file_path)
     await attachment.save(file_path)
 
     # Process the image in a separate thread to avoid blocking
