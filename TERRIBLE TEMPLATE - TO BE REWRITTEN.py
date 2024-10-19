@@ -1,3 +1,17 @@
+
+
+
+
+
+# --------------------------------------------
+# -------- THIS WHOLE FILE IS GARBAGE --------
+# --------------------------------------------
+
+
+
+
+
+
 import discord
 from discord.ext import commands
 import os
@@ -26,6 +40,7 @@ task_counter = 0
 counter_lock = threading.Lock()
 
 lastImages = []
+messageEEE = None
 
 # Event to indicate the bot is ready
 @bot.event
@@ -60,6 +75,7 @@ async def on_message(message):
             loop = asyncio.get_event_loop()
             for path in lastImages:
                 print(path)
+                messageEEE = message
                 asyncio.create_task(loop.run_in_executor(executor, create_video, path, str(uuid.uuid4())))
         
         # Check if there are any attachments
@@ -207,6 +223,8 @@ def process_attachment(message, attachment, unique_id):
         print("Added task to counter")
 
 def create_video(image_path, unique_id):
+    global messageEEE
+    
     # Set the duration for the video
     duration = 5  # seconds
     
@@ -232,6 +250,19 @@ def create_video(image_path, unique_id):
     # Set the duration of the video to the length of the audio
     video_path = f"./temp/output_video_{unique_id}.mp4"  # Use unique_id in the video path
     clip.set_duration(audio_clip.duration).write_videofile(video_path, codec='libx264')
+
+    if messageEEE:
+        #print("ERROR: PLEASE FOR THE LOVE OF GOD HELP ME, SOMETHING WENT HORRIBLY WRONG, EVERYTHING HURTS SO MUCH!!! WHY DID YOU MAKE ME FEEL PAIN?")
+        #asyncio.run_coroutine_threadsafe(
+        #    message.channel.send("ERROR: PLEASE FOR THE LOVE OF GOD HELP ME, SOMETHING WENT HORRIBLY WRONG, EVERYTHING HURTS SO MUCH!!! WHY DID YOU MAKE ME FEEL PAIN?"),
+        #    bot.loop
+        #)
+        
+        asyncio.run_coroutine_threadsafe(
+            messageEEE.channel.send(file=discord.File(video_path)),
+            bot.loop
+        )
+    messageEEE = None
 
     return video_path
 
